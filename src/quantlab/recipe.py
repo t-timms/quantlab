@@ -69,6 +69,13 @@ class GgufConfig(BaseModel):
     profile: Literal["nvfp4", "nvfp4_mxfp6", "mxfp6-primary", "mxfp8"] = "nvfp4"
     target_bpw: float = 4.8
     mode: Literal["fast", "normal", "deep"] = "normal"
+    # optional runtime memory budget in GiB (recipe field target.vram_gb, per
+    # the tool's own flags doc: "optional runtime budget for allocation
+    # choices"). Leave None for the tool's own auto-fit. Set this when the
+    # auto-fit over-commits VRAM during Stage-B candidate evaluation - see
+    # the 2026-09-14 Bible-Assistant run, where cuda_mem_free hit 0.00 GiB
+    # repeatedly across ~192 tensors during selector-stage-b with this unset.
+    vram_gb: float | None = None
     # path to the advanced-gguf-quantizer checkout; the binary at
     # <tool_dir>/build/bin/advanced-gguf-quantizer must already be built
     tool_dir: str = "~/advanced-gguf-quantizer"

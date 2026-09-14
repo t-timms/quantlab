@@ -12,7 +12,9 @@ Boundaries") and point recipe.gguf.bf16_gguf at the result.
 
 from __future__ import annotations
 
+import os
 import pathlib
+import shlex
 import subprocess
 
 from ..project import Project
@@ -23,6 +25,46 @@ STAGE = "quantize"
 
 def _tool_binary(tool_dir: pathlib.Path) -> pathlib.Path:
     return tool_dir / "build" / "bin" / "advanced-gguf-quantizer"
+
+
+def _run_logged(cmd: list[str], log, *, env: dict | None = None) -> None:
+    log.write(f"$ {' '.join(shlex.quote(c) for c in cmd)}\n")
+    log.flush()
+    subprocess.run(cmd, check=True, stdout=log, stderr=subprocess.STDOUT, env=env)
+
+
+def _ensure_prereq_artifact(
+    binary: pathlib.Path,
+    tool_recipe: pathlib.Path,
+    subcommand: str,
+    artifact_path: str,
+    bin_dir: pathlib.Path,
+    log,
+) -> None:
+    """imatrix and KLD-base are NOT auto-built by `run` (confirmed against the
+    tool's own docs/advanced-gguf-quantizer-imatrix-kld.md, after an earlier
+    reading of main.cpp's pipeline-script generation wrongly suggested they
+    were) - generate each explicitly via the tool's own
+    imatrix-command/kld-command, which prints the exact recommended
+    llama-imatrix/llama-perplexity invocation. Per that doc: "Use the
+    generated command as-is... Do not add context, batch, stride, or runtime
+    scheduling overrides" - so this runs the printed command verbatim rather
+    than reconstructing flags itself.
+    """
+    if pathlib.Path(artifact_path).exists():
+        log.write(f"[quantlab] {subcommand}: {artifact_path} already exists, reusing\n")
+        return
+    printed = subprocess.run(
+        [str(binary), subcommand, str(tool_recipe)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    log.write(f"[quantlab] {subcommand} -> {printed}\n")
+    log.flush()
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    _run_logged(shlex.split(printed), log, env=env)
 
 
 def _write_tool_recipe(recipe: Recipe, project: Project) -> pathlib.Path:
@@ -53,6 +95,10 @@ def _write_tool_recipe(recipe: Recipe, project: Project) -> pathlib.Path:
                 "[target]",
                 f'precision_mode = "{cfg.profile}"',
                 f"target_bpw = {cfg.target_bpw}",
+                # the tool's recipe parser wants an integer here (confirmed by
+                # trial: "invalid integer value: 12.0" on a float) - round
+                # down, which is the conservative direction for a memory budget
+                *([f"vram_gb = {int(cfg.vram_gb)}"] if cfg.vram_gb is not None else []),
                 "",
                 "[quantizer]",
                 f'mode = "{cfg.mode}"',
@@ -84,16 +130,21 @@ def run(recipe: Recipe, project: Project) -> str:
 
     project.start(STAGE)
     log_path = project.log_path(STAGE)
+    bin_dir = binary.parent
     try:
         with log_path.open("w") as log:
-            subprocess.run(
+            _ensure_prereq_artifact(
+                binary, tool_recipe, "imatrix-command", str(project.dir / "imatrix.dat"), bin_dir, log
+            )
+            _ensure_prereq_artifact(
+                binary, tool_recipe, "kld-command", str(project.dir / "bf16.kld"), bin_dir, log
+            )
+            _run_logged(
                 [str(binary), "run", str(tool_recipe), "--project", str(project.dir / "gguf_run"), "--yes"],
-                check=True,
-                stdout=log,
-                stderr=subprocess.STDOUT,
+                log,
             )
     except subprocess.CalledProcessError as e:
-        project.fail(STAGE, f"advanced-gguf-quantizer exited {e.returncode} - see {log_path}")
+        project.fail(STAGE, f"advanced-gguf-quantizer pipeline step exited {e.returncode} - see {log_path}")
         raise
 
     project.finish(STAGE, output=str(recipe.output_path), tool_recipe=str(tool_recipe))
