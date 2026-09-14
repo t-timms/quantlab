@@ -1,0 +1,17 @@
+# Example: reproduces the shipped Ttimms/KAT-Coder-V2.5-Dev-REAP-50-NVFP4A16-GPTQ
+# recipe (kat-coder-nvfp4's quantize_kat_gptq.py), expressed declaratively.
+name = "kat-nvfp4a16-gptq"
+model = "~/models/kat-coder-reap-50-bf16"
+output = "~/models/kat-nvfp4a16-gptq"
+backend = "llmcompressor"
+
+[calibration]
+dataset = "theblackcat102/evol-codealpaca-v1"
+samples = 512
+max_seq_length = 2048
+
+[llmcompressor]
+method = "gptq_nvfp4a16"
+targets = "Linear"
+ignore = ["lm_head", "re:.*mlp\\.gate$", "re:.*shared_expert_gate$"]
+dampening_frac = 0.1

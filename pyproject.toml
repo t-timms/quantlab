@@ -1,0 +1,28 @@
+[project]
+name = "quantlab"
+version = "0.1.0"
+description = "Shared recipe-driven, resumable, quality-gated CLI wrapping ModelOpt / llm-compressor / advanced-gguf-quantizer for the 16GB-Blackwell quant pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.0",
+    "tomli-w>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+llmcompressor = ["llmcompressor", "datasets", "transformers", "torch"]
+modelopt = ["nvidia-modelopt", "transformers", "torch"]
+gate = ["vllm"]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+quantlab = "quantlab.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
