@@ -76,6 +76,18 @@ class GgufConfig(BaseModel):
     # the 2026-09-14 Bible-Assistant run, where cuda_mem_free hit 0.00 GiB
     # repeatedly across ~192 tensors during selector-stage-b with this unset.
     vram_gb: float | None = None
+    # base.threads (documented CPU worker count). CONFIRMED via source read
+    # (2026-09-14) to matter for VRAM, not just CPU: ggml-cuda/nvfp4-adv.cu
+    # keeps 6 separate `thread_local` GPU buffer-cache structs
+    # (stream/autotune/quant/mxfp6/classic/kld), each with 10+ growable
+    # cudaMalloc'd buffers that are never freed or shrunk within a run -
+    # grepped the whole file for a free/reset of any of them, zero matches.
+    # More worker threads = more independent copies of these ever-growing
+    # caches held in VRAM at once. vram_gb/mode do NOT touch this at all -
+    # nvfp4_cuda_allocation_has_headroom() checks real cudaMemGetInfo(),
+    # independent of recipe config. Lower thread count is the one real,
+    # documented lever that reduces the number of parallel growing caches.
+    threads: int | None = None
     # path to the advanced-gguf-quantizer checkout; the binary at
     # <tool_dir>/build/bin/advanced-gguf-quantizer must already be built
     tool_dir: str = "~/advanced-gguf-quantizer"

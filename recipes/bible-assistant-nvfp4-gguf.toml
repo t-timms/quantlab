@@ -1,12 +1,16 @@
 # Real run, 2026-09-14 - the Bible-Assistant NVFP4-GGUF validation.
-# v2: mode=normal ran to completion but hit severe GPU memory pressure during
-# selector-stage-b candidate evaluation (192 tensors, "CUDA encoder search
-# failed", cuda_mem_free=0.00 GiB repeatedly) - resulting KLD (0.161) was
-# ~2x a clean reference run (~0.07). mode=fast + an explicit conservative
-# vram_gb budget are the two documented, public levers for this (see
-# docs/advanced-gguf-quantizer-flags.md "Runtime and memory" - batch/n_seq
-# internals are explicitly NOT public tuning knobs).
-name = "bible-assistant-nvfp4-gguf-v2"
+# v1 (mode=normal, no config): 192 encoder-search failures, KLD 0.161.
+# v2 (mode=fast, vram_gb=12): WORSE - 209 failures, KLD 0.190. Proved mode
+# and vram_gb don't touch the actual failing code path -
+# nvfp4_cuda_allocation_has_headroom() checks real cudaMemGetInfo(), not
+# any recipe field.
+# v3: source-confirmed root cause (grepped nvfp4-adv.cu for a free/reset of
+# any of its 6 thread_local GPU buffer-cache structs - zero matches; they
+# only grow, never shrink, for the whole process). More worker threads =
+# more independent growing caches in VRAM at once. base.threads is the one
+# documented lever that reduces this. Back to mode=normal (fast mode's
+# narrower search made quality worse, independent of the memory issue).
+name = "bible-assistant-nvfp4-gguf-v3"
 model = "Ttimms/Bible-Assistant-Qwen3.5-4B-v3.2"
 output = "/home/ttimm/models"
 backend = "gguf"
@@ -17,7 +21,8 @@ dataset = "/home/ttimm/bible-ai-assistant/data/raw_v2/WEB.txt"
 [gguf]
 profile = "nvfp4"
 target_bpw = 4.8
-mode = "fast"
+mode = "normal"
 vram_gb = 12.0
+threads = 2
 tool_dir = "/home/ttimm/advanced-gguf-quantizer"
 bf16_gguf = "/home/ttimm/models/bible-assistant-v3.2-bf16.gguf"

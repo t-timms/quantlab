@@ -103,6 +103,7 @@ def _write_tool_recipe(recipe: Recipe, project: Project) -> pathlib.Path:
                 "[quantizer]",
                 f'mode = "{cfg.mode}"',
                 "",
+                *(["[base]", f"threads = {cfg.threads}", ""] if cfg.threads is not None else []),
             ]
         )
     )
